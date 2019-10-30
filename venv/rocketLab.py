@@ -12,19 +12,16 @@ print(rocketData)
 #plot of all columns against time
 for i in range(1, 4):
     rocketData.plot(x = 'Time (s)', y = i, title = 'Raw Time Series')
-#    plt.show()
+    plt.show()
 
 rolling50 = rocketData.rolling(window=50).mean()
 for i in range(1, 4):
     rolling50.plot(x = 'Time (s)', y = i, title = 'Rolling Average 50')
-#    plt.show()
+    plt.show()
+
 
 #FIR FILTER HERE
 
-
-#rLMean = rocketData[rocketData.columns[1]].mean()
-#rocketData['Mean'] = rLMean
-#print(rocketData)
 
 #Control chart
 for i in range(1, 4):
@@ -37,3 +34,19 @@ for i in range(1, 4):
     rocketData.plot(x = 'Time (s)', y = [rocketData.columns[i], 'Mean', 'Lower', 'Upper'], title = 'Control Lines', color = ['black', 'blue', 'red', 'red'])
     plt.show()
 
+#linear regression
+A = rocketData['Column_A'];
+B = rocketData['Column_B'];
+denom = A.dot(A) - A.mean() * A.sum();
+slope = (A.dot(B) - B.mean() * A.sum()) / denom;
+inter = (B.mean() * A.dot(A) - A.mean() * A.dot(B)) / denom
+rocketData['APredB'] = slope*A + inter;
+res = B - rocketData['APredB']
+resAve = B - res.mean();
+R2 = 1 - res.dot(res) / resAve.dot(resAve);
+plt.scatter(A,B) #Doesn't look linear
+plt.plot(A,rocketData['APredB'], color = 'red')
+plt.annotate('figure pixels', xy=(10, 10), xycoords='figure pixels')
+plt.annotate('The equation is B = ' + str(round(slope, 3)) + '*A + ' + str(round(inter,3)) , xy=(.4, .30), xycoords='figure fraction')
+plt.annotate('R^2 of ' + str(round(R2,5)), xy=(.40, .25), xycoords='figure fraction')
+plt.show();
