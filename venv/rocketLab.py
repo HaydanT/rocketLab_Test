@@ -1,4 +1,5 @@
 import scipy
+import scipy.fftpack
 from scipy import misc
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,12 +13,12 @@ print(rocketData)
 #plot of all columns against time
 for i in range(1, 4):
     rocketData.plot(x = 'Time (s)', y = i, title = 'Raw Time Series')
-    plt.show()
+#    plt.show()
 
 rolling50 = rocketData.rolling(window=50).mean()
 for i in range(1, 4):
     rolling50.plot(x = 'Time (s)', y = i, title = 'Rolling Average 50')
-    plt.show()
+#    plt.show()
 
 
 #FIR FILTER HERE
@@ -32,7 +33,7 @@ for i in range(1, 4):
     rocketData['Lower'] = rLMean - rLControl;
     rocketData['Upper'] = rLMean + rLControl;
     rocketData.plot(x = 'Time (s)', y = [rocketData.columns[i], 'Mean', 'Lower', 'Upper'], title = 'Control Lines', color = ['black', 'blue', 'red', 'red'])
-    plt.show()
+#    plt.show()
 
 #linear regression
 A = rocketData['Column_A'];
@@ -46,7 +47,34 @@ resAve = B - res.mean();
 R2 = 1 - res.dot(res) / resAve.dot(resAve);
 plt.scatter(A,B) #Doesn't look linear
 plt.plot(A,rocketData['APredB'], color = 'red')
-plt.annotate('figure pixels', xy=(10, 10), xycoords='figure pixels')
 plt.annotate('The equation is B = ' + str(round(slope, 3)) + '*A + ' + str(round(inter,3)) , xy=(.4, .30), xycoords='figure fraction')
 plt.annotate('R^2 of ' + str(round(R2,5)), xy=(.40, .25), xycoords='figure fraction')
-plt.show();
+#plt.show();
+
+#FFT
+colCFFTtmp = scipy.fftpack.fft(rocketData['Column_C'])
+colCPStmp = np.abs(colCFFTtmp) ** 2
+colCFFT = scipy.fftpack.fftfreq(len(colCPStmp), 1/2500)
+i = colCFFT > 0
+fig, ax = plt.subplots(1, 1)
+logOut = 10 * np.log10(colCPStmp[i])
+ax.plot(colCFFT[i], logOut)
+ax.set_xlabel('Frequency (Hz)')
+ax.set_ylabel('PSD (dB)')
+maxLog = np.amax(logOut)
+maxFreq = np.where(logOut == maxLog)
+maxFreqData = colCFFT[maxFreq[0][0]]
+plt.annotate('Strongest Component at : ' + str(round(maxFreqData,1)) + "Hz", xy=(.30, .15), xycoords='figure fraction')
+
+
+fig.show()
+
+#logOut = 10 * np.log10(colCPStmp[i])
+
+print(logOut)
+print(maxLog)
+
+print()
+
+
+#print(colCFFT)
