@@ -6,71 +6,102 @@ import numpy as np
 import pandas as pd
 import scipy.signal as signal
 from scipy.signal import butter, kaiserord, lfilter, firwin, freqz, filtfilt
+from pylab import figure, clf, plot, xlabel, ylabel, xlim, ylim, title, grid, axes, show
 import csv
 from numpy.fft import rfft
 
-
-def fftdB(array, bins=10000, sampleRate=31250, chart=False, real=False):
-    freq = 1.0 / sampleRate
-    length = len(array);
-    if (length < bins) : bins = length;
-    if (real):
-        yf = scipy.fftpack.rfft(array)
-        yfdBtemp = np.abs(yf) * 2
-        yfdB = 20 * np.log10(yfdBtemp)
-        yChart = 2.0 / bins * np.abs(yfdB[1:int(bins / 2 + 1)])
-        if (chart):
-            xChart = np.linspace(1.0, 1.0 / (2 * freq) + 1, bins / 2.0)
-    else:
-        yf = scipy.fftpack.fft(array)
-        yfdBtemp = np.abs(yf) * 2
-        yfdB = 20 * np.log10(yfdBtemp)
-        yChart = 2.0 / bins * np.abs(yfdB[1:int(bins // 2) + 1])
-        if (chart):
-            xChart = np.linspace(1.0, 1.0 / (2.0 * freq) + 1, bins / 2.0)
-    if (chart):
-        xf = np.linspace(1.0, 1.0 / (2.0 * sampleRate) + 1, bins / 2.0)
-        fig, ax = plt.subplots()
-        ax.plot(xChart, 20 * np.log10(yChart))
-        maxLog = np.amax(yChart)
-        maxFreq = np.where(yChart == maxLog)
-        maxFreqData = xChart[maxFreq[0][0]]
-        plt.annotate('Strongest Component at : ' + str(round(maxFreqData,1)) + "Hz", xy=(.30, .15), xycoords='figure fraction')
-        plt.show()
-        print(str(max(xChart)))
-        print(str(len(yChart)))
-    return yChart
-
-#Import Data
+#-----------------
+#5a) - Import Data
+#-----------------
 plt.close('all')
 rocketData = pd.read_csv('TestData.csv');
+sample_rate = 2500.0
 print(rocketData)
 
-#plot of all columns against time
+#---------------------------
+#5bi) - Plot all time series
+#---------------------------
 for i in range(1, 4):
     rocketData.plot(x = 'Time (s)', y = i, title = 'Raw Time Series')
     plt.show()
 
+#-------------------------------
+#5bii) - 50 POint moving average
+#-------------------------------
 rolling50 = rocketData.rolling(window=50).mean()
 for i in range(1, 4):
     rolling50.plot(x = 'Time (s)', y = i, title = 'Rolling Average 50')
     plt.show()
 
-#FIR Filter - ToDo Review this!
-fs = 2500  # Sampling frequency
-fc = 100  # Cut-off frequency of the filter
-w = fc / (fs / 2) # Normalize the frequency
-t = rocketData['Time (s)']
-for i in range(1, 4):
-    signalc = rocketData[rocketData.columns[i]]
-    plt.plot(t, signalc, label=rocketData.columns[i])
-    b, a = signal.butter(5, w, 'low')
-    output = scipy.signal.filtfilt(b, a, signalc)
-    plt.plot(t, output, label='filtered')
-    plt.legend()
-    plt.show()
+#-------------------
+#5biii) - FIR Filters
+#-------------------
+# The Nyquist rate of the signal.
+nyq_rate = sample_rate / 2.0
+# The desired width of the transition from pass to stop,
+# relative to the Nyquist rate.
+transition = 200.0
+width = (transition*2)/nyq_rate
+# The desired attenuation in the stop band, in dB.
+ripple_db = 200.0
+# Compute the order and Kaiser parameter for the FIR filter.
+N, beta = kaiserord(ripple=ripple_db, width=width)
+# The cutoff frequency of the filter.
+cutoff_hz = 100.0
+# Roll off = Average drop per octave in tansition region
+rollOff = (cutoff_hz * (ripple_db-3) / transition)
+# Use firwin with a Kaiser window to create a lowpass FIR filter.
+taps = firwin(numtaps=N, cutoff=cutoff_hz/nyq_rate, window=('kaiser', beta))
 
-#Control chart
+# Plot the FIR filter coefficients.
+figure(1)
+plot(taps, 'bo-', linewidth=2)
+title('Filter Coefficients (%d taps)' % N)
+grid(True)
+
+# Plot the magnitude response of the filter.
+w, h = freqz(taps, worN=8000)
+figure(2)
+clf()
+plot((w/np.pi)*nyq_rate, 20*np.log10(np.abs(h)), linewidth=2)
+#plt.xscale('log')
+plt.xlim(0,int((width * nyq_rate / 2 + cutoff_hz)*1.2))
+plt.ylim(int((-ripple_db)*1.2),0)
+xlabel('Frequency (Hz)')
+ylabel('Gain dB')
+title('Frequency Response. Roll of = ' + str(int(rollOff)) + 'dB/Octave')
+grid(True)
+# Upper inset plot.
+ax1 = axes([0.22, 0.3, .45, .25])
+plot((w/np.pi)*nyq_rate, np.absolute(h), linewidth=2)
+grid(True)
+
+#Apply FIR
+# The phase delay of the filtered signal.
+delay = 0.5 * (N-1) / sample_rate
+nsamples = len(rocketData['Column_A'])
+t = np.arange(nsamples) / sample_rate
+figure(3)
+for i in range(1, 4):
+    x = rocketData[rocketData.columns[i]]
+    # Use lfilter to filter x with the FIR filter.
+    filtered_x = lfilter(taps, 1.0, x)
+    # Plot the original signal.
+    plot(t, x, label='Raw')
+    # Plot the filtered signal, shifted to compensate for the phase delay.
+    # Plot just the "good" part of the filtered signal.  The first N-1
+    # samples are "corrupted" by the initial conditions.
+    dataEnd = len(filtered_x) - N
+    plot(t[N-1:]-delay, filtered_x[N-1:], 'g', label='filtered')
+    title('FIR processed data : ' + rocketData.columns[i])
+    xlabel('Time (s)')
+    plt.gca().legend(('Raw Data','Filtered Data'))
+    grid(True)
+    show()
+
+#---------------------
+#5biv) - Control Chart
+#---------------------
 for i in range(1, 4):
     rLMean = rocketData[rocketData.columns[i]].mean()
     rocketData['Mean'] = rLMean
@@ -81,7 +112,9 @@ for i in range(1, 4):
     rocketData.plot(x = 'Time (s)', y = [rocketData.columns[i], 'Mean', 'Lower', 'Upper'], title = 'Control Lines', color = ['black', 'blue', 'red', 'red'])
     plt.show()
 
-#linear regression
+#-------------------------
+#5c) - Linear Regression
+#-------------------------
 A = rocketData['Column_A'];
 B = rocketData['Column_B'];
 denom = A.dot(A) - A.mean() * A.sum();
@@ -97,7 +130,9 @@ plt.annotate('The equation is B = ' + str(round(slope, 3)) + '*A + ' + str(round
 plt.annotate('R^2 of ' + str(round(R2,5)), xy=(.40, .25), xycoords='figure fraction')
 plt.show();
 
-#Butterworth Filter - - ToDo Review This!
+#-------------------------
+#5d) - Butterworth Filter
+#-------------------------
 # 1st Order so shoulder is about at about ~50Hz (1 order down)
 dt = 0.0004  # sampling interval
 Fs = 1 / dt  # sampling frequency
@@ -170,6 +205,6 @@ axes[1].set_title("Log. Magnitude Spectrum (Buttered)")
 resp2, respFreq2, trash2 = axes[1].magnitude_spectrum(filtered, Fs=Fs, scale='linear', color='C1')
 axes[1].set_xscale('log')
 newValue = resp2[maxFreq]
-
 fig.tight_layout()
+plt.show()
 plt.show()
