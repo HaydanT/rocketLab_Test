@@ -1,41 +1,103 @@
-from __future__ import division, print_function
-import numpy as np
-from numpy.random import randn
-from numpy.fft import rfft
-from scipy import signal
-import matplotlib.pyplot as plt
+from numpy import cos, sin, pi, absolute, arange
+from scipy.signal import kaiserord, lfilter, firwin, freqz
+from pylab import figure, clf, plot, xlabel, ylabel, xlim, ylim, title, grid, axes, show
+import pandas as pd
+import numpy.fft as rfft
 
-b, a = signal.butter(2, 0.03, analog=False)
+#Import Data
+rocketData = pd.read_csv('TestData.csv');
 
-# Show that frequency response is the same
-impulse = np.zeros(10000)
-impulse[5000] = 1
+#------------------------------------------------
+# Create a signal for demonstration.
+#------------------------------------------------
 
-# Applies filter forward and backward in time
-imp_ff = signal.filtfilt(b, a, impulse)
+sample_rate = 2500.0
+nsamples = len(rocketData['Column_A'])
+t = arange(nsamples) / sample_rate
+x = rocketData['Column_A']
 
-# Applies filter forward in time twice (for same frequency response)
-imp_lf = signal.lfilter(b, a, signal.lfilter(b, a, impulse))
 
-plt.subplot(2, 2, 1)
-plt.semilogx(20*np.log10(np.abs(rfft(imp_lf))))
-plt.ylim(-100, 20)
-plt.grid(True, which='both')
-plt.title('lfilter')
+#------------------------------------------------
+# Create a FIR filter and apply it to x.
+#------------------------------------------------
 
-plt.subplot(2, 2, 2)
-plt.semilogx(20*np.log10(np.abs(rfft(imp_ff))))
-plt.ylim(-100, 20)
-plt.grid(True, which='both')
-plt.title('filtfilt')
+# The Nyquist rate of the signal.
+nyq_rate = sample_rate / 2.0
 
-sig = np.cumsum(randn(800))  # Brownian noise
-sig_ff = signal.filtfilt(b, a, sig)
-sig_lf = signal.lfilter(b, a, signal.lfilter(b, a, sig))
-plt.subplot(2, 1, 2)
-plt.plot(sig, color='silver', label='Original')
-plt.plot(sig_ff, color='#3465a4', label='filtfilt')
-plt.plot(sig_lf, color='#cc0000', label='lfilter')
-plt.grid(True, which='both')
-plt.legend(loc="best")
-plt.show()
+# The desired width of the transition from pass to stop,
+# relative to the Nyquist rate.  We'll design the filter
+# with a 5 Hz transition width.
+width = 5.0/nyq_rate
+
+# The desired attenuation in the stop band, in dB.
+ripple_db = 60.0
+
+# Compute the order and Kaiser parameter for the FIR filter.
+N, beta = kaiserord(ripple_db, width)
+
+# The cutoff frequency of the filter.
+cutoff_hz = 100.0
+
+# Use firwin with a Kaiser window to create a lowpass FIR filter.
+taps = firwin(N, cutoff_hz/nyq_rate, window=('kaiser', beta))
+
+# Use lfilter to filter x with the FIR filter.
+filtered_x = lfilter(taps, 1.0, x)
+
+#------------------------------------------------
+# Plot the FIR filter coefficients.
+#------------------------------------------------
+
+figure(1)
+plot(taps, 'bo-', linewidth=2)
+title('Filter Coefficients (%d taps)' % N)
+grid(True)
+
+#------------------------------------------------
+# Plot the magnitude response of the filter.
+#------------------------------------------------
+
+figure(2)
+clf()
+w, h = freqz(taps, worN=8000)
+plot((w/pi)*nyq_rate, absolute(h), linewidth=2)
+xlabel('Frequency (Hz)')
+ylabel('Gain')
+title('Frequency Response')
+ylim(-0.05, 1.05)
+grid(True)
+
+# Upper inset plot.
+ax1 = axes([0.42, 0.6, .45, .25])
+plot((w/pi)*nyq_rate, absolute(h), linewidth=2)
+xlim(0,8.0)
+ylim(0.9985, 1.001)
+grid(True)
+
+# Lower inset plot
+ax2 = axes([0.42, 0.25, .45, .25])
+plot((w/pi)*nyq_rate, absolute(h), linewidth=2)
+xlim(12.0, 20.0)
+ylim(0.0, 0.0025)
+grid(True)
+
+#------------------------------------------------
+# Plot the original and filtered signals.
+#------------------------------------------------
+
+# The phase delay of the filtered signal.
+delay = 0.5 * (N-1) / sample_rate
+
+figure(3)
+# Plot the original signal.
+plot(t, x)
+# Plot the filtered signal, shifted to compensate for the phase delay.
+plot(t-delay, filtered_x, 'r-')
+# Plot just the "good" part of the filtered signal.  The first N-1
+# samples are "corrupted" by the initial conditions.
+plot(t[N-1:]-delay, filtered_x[N-1:], 'g', linewidth=4)
+
+xlabel('t')
+grid(True)
+
+show()

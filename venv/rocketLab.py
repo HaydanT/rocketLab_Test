@@ -7,6 +7,7 @@ import pandas as pd
 import scipy.signal as signal
 from scipy.signal import butter, kaiserord, lfilter, firwin, freqz, filtfilt
 import csv
+from numpy.fft import rfft
 
 
 def fftdB(array, bins=10000, sampleRate=31250, chart=False, real=False):
@@ -95,26 +96,6 @@ plt.plot(A,rocketData['APredB'], color = 'red')
 plt.annotate('The equation is B = ' + str(round(slope, 3)) + '*A + ' + str(round(inter,3)) , xy=(.4, .30), xycoords='figure fraction')
 plt.annotate('R^2 of ' + str(round(R2,5)), xy=(.40, .25), xycoords='figure fraction')
 plt.show();
-
-#FFT
-fftdB(rocketData['Column_C'], sampleRate=2500, chart=True, real=False)
-
-
-# colCFFTtmp = scipy.fftpack.fft(rocketData['Column_C'])
-# colCPStmp = np.abs(colCFFTtmp) ** 2
-# colCFFT = scipy.fftpack.fftfreq(len(colCPStmp), 1/2500)
-# i = colCFFT > 0
-# fig, ax = plt.subplots(1, 1)
-# logOut = 10 * np.log10(colCPStmp[i])
-# ax.plot(colCFFT[i], logOut)
-# ax.set_xlabel('Frequency (Hz)')
-# ax.set_ylabel('PSD (dB)')
-# #Max component
-# maxLog = np.amax(logOut)
-# maxFreq = np.where(logOut == maxLog)
-# maxFreqData = colCFFT[maxFreq[0][0]]
-# plt.annotate('Strongest Component at : ' + str(round(maxFreqData,1)) + "Hz", xy=(.30, .15), xycoords='figure fraction')
-# fig.show()
 
 #Butterworth Filter - - ToDo Review This!
 # 1st Order so shoulder is about at about ~50Hz (1 order down)
