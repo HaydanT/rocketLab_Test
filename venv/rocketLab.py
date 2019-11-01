@@ -1,6 +1,6 @@
 import scipy
 import scipy.fftpack
-from scipy import misc
+from scipy import misc, stats
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,12 +17,14 @@ plt.close('all')
 rocketData = pd.read_csv('TestData.csv');
 sample_rate = 2500.0
 print(rocketData)
+chartSize = (15,5)
 
 #---------------------------
 #5bi) - Plot all time series
 #---------------------------
 for i in range(1, 4):
-    rocketData.plot(x = 'Time (s)', y = i, title = 'Raw Time Series')
+    rocketData.plot(figsize=chartSize, x = 'Time (s)', y = i, title = rocketData.columns[i]  + ' Raw Time Series')
+    plt.savefig('Time Series ' + rocketData.columns[i]  + '.png')
     plt.show()
 
 #-------------------------------
@@ -30,7 +32,8 @@ for i in range(1, 4):
 #-------------------------------
 rolling50 = rocketData.rolling(window=50).mean()
 for i in range(1, 4):
-    rolling50.plot(x = 'Time (s)', y = i, title = 'Rolling Average 50')
+    rolling50.plot(figsize=chartSize, x = 'Time (s)', y = i, title = rocketData.columns[i]  + ' Rolling Average 50')
+    plt.savefig('Rolling 50 ' + rocketData.columns[i]  + '.png')
     plt.show()
 
 #-------------------
@@ -38,18 +41,12 @@ for i in range(1, 4):
 #-------------------
 # The Nyquist rate of the signal.
 nyq_rate = sample_rate / 2.0
-# The desired width of the transition from pass to stop,
-# relative to the Nyquist rate.
-transition = 200.0
-width = (transition*2)/nyq_rate
-# The desired attenuation in the stop band, in dB.
-ripple_db = 200.0
-# Compute the order and Kaiser parameter for the FIR filter.
-N, beta = kaiserord(ripple=ripple_db, width=width)
-# The cutoff frequency of the filter.
-cutoff_hz = 100.0
-# Roll off = Average drop per octave in tansition region
-rollOff = (cutoff_hz * (ripple_db-3) / transition)
+transition = 200.0 # The desired width of the transition from pass to stop,
+width = (transition*2)/nyq_rate # relative to the Nyquist rate.
+ripple_db = 200.0 # The desired attenuation in the stop band, in dB.
+N, beta = kaiserord(ripple=ripple_db, width=width) # Compute the order and Kaiser parameter for the FIR filter.
+cutoff_hz = 100.0 # The cutoff frequency of the filter.
+rollOff = (cutoff_hz * (ripple_db-3) / transition) # Roll off = Average drop per octave in tansition region
 # Use firwin with a Kaiser window to create a lowpass FIR filter.
 taps = firwin(numtaps=N, cutoff=cutoff_hz/nyq_rate, window=('kaiser', beta))
 
@@ -58,6 +55,7 @@ figure(1)
 plot(taps, 'bo-', linewidth=2)
 title('Filter Coefficients (%d taps)' % N)
 grid(True)
+plt.savefig('FIR Filter.png')
 
 # Plot the magnitude response of the filter.
 w, h = freqz(taps, worN=8000)
@@ -75,28 +73,25 @@ grid(True)
 ax1 = axes([0.22, 0.3, .45, .25])
 plot((w/np.pi)*nyq_rate, np.absolute(h), linewidth=2)
 grid(True)
+plt.savefig('FIR Responce.png')
 
 #Apply FIR
-# The phase delay of the filtered signal.
-delay = 0.5 * (N-1) / sample_rate
-nsamples = len(rocketData['Column_A'])
-t = np.arange(nsamples) / sample_rate
+delay = 0.5 * (N-1) / sample_rate # The phase delay
+t = np.arange(len(rocketData['Column_A'])) / sample_rate
 figure(3)
 for i in range(1, 4):
     x = rocketData[rocketData.columns[i]]
-    # Use lfilter to filter x with the FIR filter.
     filtered_x = lfilter(taps, 1.0, x)
-    # Plot the original signal.
-    plot(t, x, label='Raw')
+    figure(figsize=chartSize)
+    plot(t, x, label='Raw') # Plot the original signal.
     # Plot the filtered signal, shifted to compensate for the phase delay.
-    # Plot just the "good" part of the filtered signal.  The first N-1
-    # samples are "corrupted" by the initial conditions.
-    dataEnd = len(filtered_x) - N
+    # Plot just the "good" part of the filtered signal.
     plot(t[N-1:]-delay, filtered_x[N-1:], 'g', label='filtered')
     title('FIR processed data : ' + rocketData.columns[i])
     xlabel('Time (s)')
     plt.gca().legend(('Raw Data','Filtered Data'))
     grid(True)
+    plt.savefig('FIR Filtered ' + rocketData.columns[i] + '.png')
     show()
 
 #---------------------
@@ -109,25 +104,30 @@ for i in range(1, 4):
     rocketData['Mean'] = rLMean;
     rocketData['Lower'] = rLMean - rLControl;
     rocketData['Upper'] = rLMean + rLControl;
-    rocketData.plot(x = 'Time (s)', y = [rocketData.columns[i], 'Mean', 'Lower', 'Upper'], title = 'Control Lines', color = ['black', 'blue', 'red', 'red'])
+    rocketData.plot(x = 'Time (s)', y = [rocketData.columns[i], 'Mean', 'Lower', 'Upper'], title = 'Control Lines' + rocketData.columns[i], color = ['black', 'blue', 'red', 'red'], figsize=chartSize)
+    plt.savefig('Control Chart ' + rocketData.columns[i] + '.png')
     plt.show()
+
+#Why no data points outside the limits for A and B? Non-normal distribution!
+for i in range(1, 4):
+    rocketData[rocketData.columns[i]].hist(bins=50, figsize=chartSize)
+    plt.savefig('Distribution ' + rocketData.columns[i] + '.png')
+    plt.show()
+
 
 #-------------------------
 #5c) - Linear Regression
 #-------------------------
 A = rocketData['Column_A'];
 B = rocketData['Column_B'];
-denom = A.dot(A) - A.mean() * A.sum();
-slope = (A.dot(B) - B.mean() * A.sum()) / denom;
-inter = (B.mean() * A.dot(A) - A.mean() * A.dot(B)) / denom
-rocketData['APredB'] = slope*A + inter;
-res = B - rocketData['APredB']
-resAve = B - res.mean();
-R2 = 1 - res.dot(res) / resAve.dot(resAve);
+slope, intercept, r_value, p_value, std_err = stats.linregress(A, B)
+rocketData['APredB'] = slope*A + intercept;
+R2 = r_value ** 2
 plt.scatter(A,B) #Doesn't look linear
 plt.plot(A,rocketData['APredB'], color = 'red')
-plt.annotate('The equation is B = ' + str(round(slope, 3)) + '*A + ' + str(round(inter,3)) , xy=(.4, .30), xycoords='figure fraction')
+plt.annotate('The equation is B = ' + str(round(slope, 3)) + '*A + ' + str(round(intercept,3)) , xy=(.4, .30), xycoords='figure fraction')
 plt.annotate('R^2 of ' + str(round(R2,5)), xy=(.40, .25), xycoords='figure fraction')
+plt.savefig('Linear Regression A v B.png')
 plt.show();
 
 #-------------------------
@@ -151,6 +151,7 @@ axes[1].set_title("Log. Magnitude Spectrum")
 y, x, waste = axes[1].magnitude_spectrum(s, Fs=Fs, scale='dB', color='C1')
 
 fig.tight_layout()
+plt.savefig('Column C FFT.png')
 plt.show()
 
 #Butterworth Filter
@@ -169,7 +170,8 @@ imp_ff = signal.filtfilt(b, a, impulse)
 plt.semilogx(20*np.log10(np.abs(rfft(imp_ff))))
 plt.ylim(-100, 20)
 plt.grid(True, which='both')
-plt.title('Butter Filter with order : ' + str(filter_order) + ' and cut at : ' + str(frequency_cutoff))
+plt.title('Butterworth Filter with order : ' + str(filter_order) + ' and cut at : ' + str(frequency_cutoff))
+plt.savefig('Butterworth Visualisation.png')
 plt.show()
 
 # Apply the filter to data
@@ -179,6 +181,7 @@ plt.plot(rocketData['Time (s)'], rocketData['Column_C'])
 plt.plot(rocketData['Time (s)'], filtered)
 plt.title("Butter Filter, Cutoff at " + str(frequency_cutoff) + "Hz")
 plt.legend(['Original','Filtered'])
+plt.savefig('Column C Filtered.png')
 plt.show()
 
 #Seeing what butters doing:
@@ -206,5 +209,6 @@ resp2, respFreq2, trash2 = axes[1].magnitude_spectrum(filtered, Fs=Fs, scale='li
 axes[1].set_xscale('log')
 newValue = resp2[maxFreq]
 fig.tight_layout()
+plt.savefig('Column C Filtered Frequency.png')
 plt.show()
 plt.show()
